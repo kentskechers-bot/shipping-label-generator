@@ -269,7 +269,7 @@
           getValue(base, "Shipping Address2")
         ].filter(Boolean).join(", ");
 
-        const zip = getValue(base, "Shipping Zip").replace(/'/g, "");
+        const zip = "";
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
 
         const defaultWeight = totalQty || 1;
