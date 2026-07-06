@@ -3,24 +3,372 @@
 <head>
   <meta charset="UTF-8">
   <title>Shipping Label Generator</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f7f7f7;
+    }
+
+    .box {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      margin-top: 0;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 18px;
+    }
+
+    select, input, button {
+      margin-top: 8px;
+      padding: 10px;
+      width: 100%;
+      max-width: 420px;
+      font-size: 15px;
+    }
+
+    button {
+      background: #1f7a4d;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 24px;
+    }
+
+    button:hover {
+      background: #17633d;
+    }
+
+    .note {
+      margin-top: 20px;
+      padding: 12px;
+      background: #fff8dc;
+      border-left: 4px solid #d4a017;
+      font-size: 14px;
+    }
+
+    .result {
+      margin-top: 20px;
+      padding: 12px;
+      background: #eef8f1;
+      border-left: 4px solid #1f7a4d;
+      display: none;
+      white-space: pre-line;
+      font-size: 14px;
+    }
+
+    .error {
+      background: #ffecec;
+      border-left-color: #cc0000;
+    }
+  </style>
 </head>
+
 <body>
-  <h1>Shipping Label Generator</h1>
-  <p>Convert Shopify order report into courier bulk upload template.</p>
+  <div class="box">
+    <h1>Shipping Label Generator</h1>
+    <p>Convert Shopify order report into courier bulk upload template.</p>
 
-  <label>Select Country:</label>
-  <select>
-    <option>Vietnam</option>
-    <option>Thailand</option>
-  </select>
+    <label>Select Country</label>
+    <select id="country">
+      <option value="VN">Vietnam - SPX</option>
+      <option value="TH">Thailand - SPX</option>
+    </select>
 
-  <br><br>
+    <label>Upload Shopify Order Report CSV</label>
+    <input type="file" id="csvFile" accept=".csv">
 
-  <label>Upload Shopify Order Report:</label>
-  <input type="file" accept=".csv">
+    <button onclick="generateTemplate()">Generate Template</button>
 
-  <br><br>
+    <div class="note">
+      Current version: Vietnam mapping is active. Thailand mapping will be added after we confirm the TH SPX bulk upload template.
+    </div>
 
-  <button>Generate Template</button>
+    <div id="result" class="result"></div>
+  </div>
+
+  <script>
+    const vnHeaders = [
+      "*Mã đơn hàng",
+      "*Tên người nhận",
+      "*Số điện thoại",
+      "*Tỉnh/Thành Phố",
+      "*Xã/Phường",
+      "*Địa chỉ chi tiết",
+      "Lưu ý về địa chỉ",
+      "Mã bưu chính",
+      "*Tên sản phẩm",
+      "Số lượng (Thông tin bắt buộc khi chọn Giao hàng một phần & Thu COD)",
+      "Giá tiền (Thông tin bắt buộc khi chọn Giao hàng một phần & Thu COD)",
+      "*Tổng cân nặng bưu gửi (KG)",
+      "Chiều dài (CM)",
+      "Chiều rộng (CM)",
+      "Chiều cao (CM)",
+      "Mã khách hàng",
+      "*Giá trị đơn hàng",
+      "*Giao hàng một phần (Y/N)",
+      "*Cho phép thử hàng (Y/N)",
+      "*Cho xem hàng, không cho thử (Y/N)",
+      "Thu phí từ chối nhận hàng (Y/N)",
+      "Phí từ chối nhận hàng cần thu",
+      "*Thu COD (Y/N)",
+      "Số tiền COD",
+      "bưu gửi giá trị cao (Y/N)",
+      "*Hình thức thanh Toán",
+      "Lưu ý giao hàng"
+    ];
+
+    const vnProvinceMap = [
+      {
+        keywords: ["ho chi minh", "hồ chí minh", "hcm", "tp hcm", "tp hồ chí minh", "thành phố hồ chí minh"],
+        value: "Thành phố Hồ Chí Minh"
+      }
+    ];
+
+    const vnWardMap = [
+      {
+        keywords: ["binh thanh", "bình thạnh"],
+        value: "Phường Bình Thạnh"
+      },
+      {
+        keywords: ["binh hung hoa", "bình hưng hòa", "bình hưng hoà", "binh hung hoa a", "bình hưng hòa a"],
+        value: "Phường Bình Hưng Hòa"
+      }
+    ];
+
+    function normalizeText(text) {
+      return (text || "")
+        .toString()
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/đ/g, "d")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function getValue(row, key) {
+      return row[key] || "";
+    }
+
+    function mapProvince(row) {
+      const combined = [
+        getValue(row, "Shipping City"),
+        getValue(row, "Shipping Province"),
+        getValue(row, "Shipping Street"),
+        getValue(row, "Shipping Address1"),
+        getValue(row, "Shipping Address2")
+      ].join(" ");
+
+      const normalized = normalizeText(combined);
+
+      for (const item of vnProvinceMap) {
+        for (const keyword of item.keywords) {
+          if (normalized.includes(normalizeText(keyword))) {
+            return item.value;
+          }
+        }
+      }
+
+      return getValue(row, "Shipping City") || "NEED CHECK";
+    }
+
+    function mapWard(row) {
+      const combined = [
+        getValue(row, "Shipping Street"),
+        getValue(row, "Shipping Address1"),
+        getValue(row, "Shipping Address2"),
+        getValue(row, "Shipping City")
+      ].join(" ");
+
+      const normalized = normalizeText(combined);
+
+      for (const item of vnWardMap) {
+        for (const keyword of item.keywords) {
+          if (normalized.includes(normalizeText(keyword))) {
+            return item.value;
+          }
+        }
+      }
+
+      return "NEED CHECK";
+    }
+
+    function cleanPhone(phone) {
+      return (phone || "").toString().replace(/[^0-9+]/g, "");
+    }
+
+    function cleanNumber(value) {
+      if (!value) return 0;
+      return Number(value.toString().replace(/[^0-9.-]/g, "")) || 0;
+    }
+
+    function buildVietnamRows(shopifyRows) {
+      const orders = {};
+
+      shopifyRows.forEach(row => {
+        const orderNo = getValue(row, "Name");
+        if (!orderNo) return;
+
+        if (!orders[orderNo]) {
+          orders[orderNo] = {
+            base: row,
+            items: []
+          };
+        }
+
+        const qty = cleanNumber(getValue(row, "Lineitem quantity")) || 1;
+        const price = cleanNumber(getValue(row, "Lineitem price"));
+
+        orders[orderNo].items.push({
+          name: getValue(row, "Lineitem name"),
+          qty: qty,
+          price: price
+        });
+      });
+
+      const outputRows = [];
+      const warnings = [];
+
+      Object.keys(orders).forEach(orderNo => {
+        const order = orders[orderNo];
+        const base = order.base;
+        const items = order.items;
+
+        const productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
+        const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+        const totalProductPrice = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
+
+        const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
+        const phone = cleanPhone(getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone"));
+        const province = mapProvince(base);
+        const ward = mapWard(base);
+
+        const address = [
+          getValue(base, "Shipping Address1"),
+          getValue(base, "Shipping Address2")
+        ].filter(Boolean).join(", ");
+
+        const zip = getValue(base, "Shipping Zip").replace(/'/g, "");
+        const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
+
+        const defaultWeight = totalQty || 1;
+
+        if (!receiverName) warnings.push(`${orderNo}: missing receiver name`);
+        if (!phone) warnings.push(`${orderNo}: missing phone`);
+        if (province === "NEED CHECK") warnings.push(`${orderNo}: province needs checking`);
+        if (ward === "NEED CHECK") warnings.push(`${orderNo}: ward needs checking`);
+
+        outputRows.push([
+          orderNo,
+          receiverName,
+          phone,
+          province,
+          ward,
+          address,
+          "",
+          zip,
+          productName,
+          totalQty,
+          totalProductPrice,
+          defaultWeight,
+          "",
+          "",
+          "",
+          "",
+          orderValue,
+          "N",
+          "N",
+          "Y",
+          "N",
+          "",
+          "N",
+          "",
+          "N",
+          "Người gửi trả",
+          ""
+        ]);
+      });
+
+      return { outputRows, warnings };
+    }
+
+    function generateTemplate() {
+      const country = document.getElementById("country").value;
+      const fileInput = document.getElementById("csvFile");
+      const resultBox = document.getElementById("result");
+
+      resultBox.style.display = "block";
+      resultBox.className = "result";
+      resultBox.innerText = "Processing...";
+
+      if (!fileInput.files.length) {
+        resultBox.className = "result error";
+        resultBox.innerText = "Please upload Shopify order report CSV first.";
+        return;
+      }
+
+      if (country === "TH") {
+        resultBox.className = "result error";
+        resultBox.innerText = "Thailand template is not active yet. Please provide the TH SPX bulk upload template first.";
+        return;
+      }
+
+      Papa.parse(fileInput.files[0], {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+          const shopifyRows = results.data;
+          const { outputRows, warnings } = buildVietnamRows(shopifyRows);
+
+          const workbook = XLSX.utils.book_new();
+          const sheetData = [vnHeaders, ...outputRows];
+
+          const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+          worksheet["!cols"] = [
+            { wch: 18 }, { wch: 24 }, { wch: 16 }, { wch: 24 }, { wch: 24 },
+            { wch: 40 }, { wch: 20 }, { wch: 12 }, { wch: 60 }, { wch: 12 },
+            { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+            { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 18 },
+            { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 18 },
+            { wch: 18 }, { wch: 24 }
+          ];
+
+          XLSX.utils.book_append_sheet(workbook, worksheet, "Tạo đơn (địa chỉ mới)");
+
+          const fileName = "SPX_Vietnam_Mapped_Template.xlsx";
+          XLSX.writeFile(workbook, fileName);
+
+          let message = `Generated successfully.\nTotal orders: ${outputRows.length}\nDownloaded file: ${fileName}`;
+
+          if (warnings.length > 0) {
+            message += `\n\nNeed checking:\n- ${warnings.join("\n- ")}`;
+          }
+
+          resultBox.innerText = message;
+        },
+        error: function(error) {
+          resultBox.className = "result error";
+          resultBox.innerText = "CSV parsing failed: " + error.message;
+        }
+      });
+    }
+  </script>
 </body>
 </html>
