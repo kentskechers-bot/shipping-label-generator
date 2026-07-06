@@ -250,9 +250,14 @@
         const base = order.base;
         const items = order.items;
 
-        const productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
         const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
         const totalProductPrice = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
+
+        let productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
+
+        if (productName.length > 250) {
+            productName = `Skechers footwear - ${items.length} styles / ${totalQty} pairs`;
+            }
 
         const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
         const phone = cleanPhone(getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone"));
