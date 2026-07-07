@@ -6,6 +6,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./vn-address-db.js"></script>
 
   <style>
     body {
@@ -23,9 +24,7 @@
       box-shadow: 0 2px 10px rgba(0,0,0,0.08);
     }
 
-    h1 {
-      margin-top: 0;
-    }
+    h1 { margin-top: 0; }
 
     label {
       font-weight: bold;
@@ -50,9 +49,7 @@
       margin-top: 24px;
     }
 
-    button:hover {
-      background: #17633d;
-    }
+    button:hover { background: #17633d; }
 
     .note {
       margin-top: 20px;
@@ -102,22 +99,49 @@
     <label>Upload Shopify Order Report CSV</label>
     <input type="file" id="csvFile" accept=".csv">
 
-    <label>Upload SPX Vietnam Bulk Upload Template</label>
-    <input type="file" id="spxTemplateFile" accept=".xlsx,.xls">
-
     <button onclick="generateTemplate()">Generate Template</button>
 
     <div class="note">
       Current version: Vietnam mapping is active. Thailand mapping will be added after we confirm the TH SPX bulk upload template.<br>
       VN default parcel setting: 2KG, 14cm x 28cm x 36cm.<br>
-      This version reads SPX hidden tab City_list(2) to map province and ward using SPX official accepted wording.
+      The SPX Vietnam province and ward database is now built into the tool. User only needs to upload the Shopify order report.
     </div>
 
     <div id="result" class="result"></div>
   </div>
 
   <script>
-    const TARGET_SHEET_NAME = "Tạo đơn (địa chỉ mới)";
+    const vnHeaders = [
+      "*Mã đơn hàng",
+      "*Tên người nhận",
+      "*Số điện thoại",
+      "*Tỉnh/Thành Phố",
+      "*Xã/Phường",
+      "*Địa chỉ chi tiết",
+      "Lưu ý về địa chỉ",
+      "Mã bưu chính",
+      "*Tên sản phẩm",
+      "Số lượng (Thông tin bắt buộc khi chọn Giao hàng một phần & Thu COD)",
+      "Giá tiền (Thông tin bắt buộc khi chọn Giao hàng một phần & Thu COD)",
+      "*Tổng cân nặng bưu gửi (KG)",
+      "Chiều dài (CM)",
+      "Chiều rộng (CM)",
+      "Chiều cao (CM)",
+      "Mã khách hàng",
+      "*Giá trị đơn hàng",
+      "*Giao hàng một phần (Y/N)",
+      "*Cho phép thử hàng (Y/N)",
+      "*Cho xem hàng, không cho thử (Y/N)",
+      "Thu phí từ chối nhận hàng (Y/N)",
+      "Phí từ chối nhận hàng cần thu",
+      "*Thu COD (Y/N)",
+      "Số tiền COD",
+      "bưu gửi giá trị cao (Y/N)",
+      "*Hình thức thanh Toán",
+      "Lưu ý giao hàng",
+      "Nhắc nhở điền đúng số tiền COD",
+      "Đơn chỉ hoàn thành nếu ở dưới hiện \"Đủ điều kiện\""
+    ];
 
     function cleanOutputText(value) {
       return (value || "")
@@ -154,20 +178,12 @@
 
     function getValue(row, key) {
       const value = row[key];
-
-      if (value === undefined || value === null) {
-        return "";
-      }
-
+      if (value === undefined || value === null) return "";
       return cleanOutputText(value);
     }
 
     function getRealShopifyId(row) {
-      return (
-        getValue(row, "Id") ||
-        getValue(row, "ID") ||
-        getValue(row, "Order ID")
-      );
+      return getValue(row, "Id") || getValue(row, "ID") || getValue(row, "Order ID");
     }
 
     function cleanPhone(phone) {
@@ -189,11 +205,9 @@
 
     function shortProductName(items, totalQty) {
       let productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
-
       if (productName.length > 250) {
         productName = `Skechers footwear - ${items.length} styles / ${totalQty} pairs`;
       }
-
       return productName;
     }
 
@@ -203,73 +217,10 @@
           header: true,
           skipEmptyLines: true,
           encoding: encoding,
-          complete: function(results) {
-            resolve(results.data);
-          },
-          error: function(error) {
-            reject(error);
-          }
+          complete: function(results) { resolve(results.data); },
+          error: function(error) { reject(error); }
         });
       });
-    }
-
-    async function readWorkbookFile(file) {
-      const buffer = await file.arrayBuffer();
-      return XLSX.read(buffer, {
-        type: "array",
-        cellDates: false,
-        raw: true
-      });
-    }
-
-    function extractVNAddressDatabase(workbook) {
-      const citySheet = workbook.Sheets["City_list(2)"];
-      const stateSheet = workbook.Sheets["State_list(2)"];
-
-      if (!citySheet) {
-        throw new Error("SPX template missing hidden sheet: City_list(2)");
-      }
-
-      const cityRows = XLSX.utils.sheet_to_json(citySheet, {
-        header: 1,
-        defval: ""
-      });
-
-      const stateRows = stateSheet
-        ? XLSX.utils.sheet_to_json(stateSheet, { header: 1, defval: "" })
-        : [];
-
-      const addressDb = [];
-
-      cityRows.slice(1).forEach(row => {
-        const province = cleanOutputText(row[0]);
-        const ward = cleanOutputText(row[1]);
-
-        if (!province || !ward) return;
-
-        const wardCore = removeAdminPrefix(ward);
-
-        addressDb.push({
-          province: province,
-          ward: ward,
-          provinceNorm: normalizeText(province),
-          provinceCore: removeAdminPrefix(province),
-          wardNorm: normalizeText(ward),
-          wardCore: wardCore
-        });
-      });
-
-      const stateList = stateRows
-        .slice(1)
-        .map(row => cleanOutputText(row[0]))
-        .filter(Boolean)
-        .map(state => ({
-          state: state,
-          stateNorm: normalizeText(state),
-          stateCore: removeAdminPrefix(state)
-        }));
-
-      return { addressDb, stateList };
     }
 
     function getFullAddressText(row) {
@@ -285,27 +236,44 @@
       ].join(" ");
     }
 
+    function prepareAddressDb() {
+      const addressDb = (window.VN_ADDRESS_DB || []).map(item => {
+        const province = cleanOutputText(item.province);
+        const ward = cleanOutputText(item.ward);
+        return {
+          province,
+          ward,
+          provinceNorm: normalizeText(province),
+          provinceCore: removeAdminPrefix(province),
+          wardNorm: normalizeText(ward),
+          wardCore: removeAdminPrefix(ward)
+        };
+      });
+
+      const stateList = (window.VN_STATE_LIST || []).map(state => ({
+        state: cleanOutputText(state),
+        stateNorm: normalizeText(state),
+        stateCore: removeAdminPrefix(state)
+      }));
+
+      return { addressDb, stateList };
+    }
+
     function scoreWardCandidate(normalizedText, entry) {
       const core = entry.wardCore;
       const wardNorm = entry.wardNorm;
-
-      if (!core || core.length < 4) return 0;
+      if (!core || core.length < 3) return 0;
 
       let score = 0;
 
-      if (normalizedText.includes(wardNorm)) {
-        score += 800 + wardNorm.length;
-      }
-
-      if (normalizedText.includes(core)) {
-        score += 300 + core.length;
-      }
+      if (normalizedText.includes(wardNorm)) score += 900 + wardNorm.length;
+      if (normalizedText.includes(core)) score += 350 + core.length;
 
       if (
-        normalizedText.includes(core + " ward") ||
-        normalizedText.includes("ward " + core) ||
         normalizedText.includes("phuong " + core) ||
-        normalizedText.includes("xa " + core)
+        normalizedText.includes("xa " + core) ||
+        normalizedText.includes(core + " ward") ||
+        normalizedText.includes("ward " + core)
       ) {
         score += 1000;
       }
@@ -313,7 +281,44 @@
       return score;
     }
 
-    function findBestWard(normalizedText, province, addressDb) {
+    function inferProvinceByAlias(normalizedText) {
+      const aliases = [
+        { keys: ["hcm", "tp hcm", "tphcm", "ho chi minh"], province: "Thành phố Hồ Chí Minh" },
+        { keys: ["ha noi", "hanoi"], province: "Thành phố Hà Nội" },
+        { keys: ["da nang"], province: "Thành phố Đà Nẵng" },
+        { keys: ["can tho"], province: "Thành phố Cần Thơ" },
+        { keys: ["hai phong"], province: "Thành phố Hải Phòng" },
+        { keys: ["hue"], province: "Thành phố Huế" },
+        { keys: ["buon ma thuot", "dak lak", "daklak", "đắk lắk"], province: "Tỉnh Đắk Lắk" }
+      ];
+
+      for (const alias of aliases) {
+        for (const key of alias.keys) {
+          if (normalizedText.includes(normalizeText(key))) return alias.province;
+        }
+      }
+
+      return "";
+    }
+
+    function mapProvince(row, addressDb, stateList) {
+      const normalized = normalizeText(getFullAddressText(row));
+
+      const aliasProvince = inferProvinceByAlias(normalized);
+      if (aliasProvince) return aliasProvince;
+
+      const sortedStates = [...stateList].sort((a, b) => b.stateCore.length - a.stateCore.length);
+      for (const state of sortedStates) {
+        if (state.stateCore && state.stateCore.length >= 3 && normalized.includes(state.stateCore)) {
+          return state.state;
+        }
+      }
+
+      return "NEED CHECK";
+    }
+
+    function mapWard(row, province, addressDb) {
+      const normalized = normalizeText(getFullAddressText(row));
       let candidates = addressDb;
 
       if (province && province !== "NEED CHECK") {
@@ -321,108 +326,23 @@
       }
 
       const matched = candidates
-        .map(item => ({
-          item: item,
-          score: scoreWardCandidate(normalizedText, item)
-        }))
+        .map(item => ({ item, score: scoreWardCandidate(normalized, item) }))
         .filter(match => match.score > 0)
         .sort((a, b) => b.score - a.score);
 
-      if (!matched.length) {
-        return "";
-      }
+      if (!matched.length) return "NEED CHECK";
 
       const bestScore = matched[0].score;
       const topMatches = matched.filter(match => match.score === bestScore);
-
       const uniqueWards = [...new Set(topMatches.map(match => match.item.ward))];
 
-      if (uniqueWards.length === 1) {
-        return topMatches[0].item.ward;
-      }
-
-      return "";
-    }
-
-    function inferProvinceByWard(normalizedText, addressDb) {
-      const matched = addressDb
-        .map(item => ({
-          item: item,
-          score: scoreWardCandidate(normalizedText, item)
-        }))
-        .filter(match => match.score > 0)
-        .sort((a, b) => b.score - a.score);
-
-      if (!matched.length) {
-        return "";
-      }
-
-      const bestScore = matched[0].score;
-      const topMatches = matched.filter(match => match.score === bestScore);
-
-      const uniqueProvinces = [...new Set(topMatches.map(match => match.item.province))];
-
-      if (uniqueProvinces.length === 1) {
-        return uniqueProvinces[0];
-      }
-
-      return "";
-    }
-
-    function mapProvince(row, addressDb, stateList) {
-      const fullText = getFullAddressText(row);
-      const normalized = normalizeText(fullText);
-
-      const manualProvinceAliases = [
-        { keywords: ["hcm", "tp hcm", "tphcm", "ho chi minh"], value: "Thành phố Hồ Chí Minh" },
-        { keywords: ["ha noi", "hanoi"], value: "Thành phố Hà Nội" },
-        { keywords: ["da nang"], value: "Thành phố Đà Nẵng" },
-        { keywords: ["can tho"], value: "Thành phố Cần Thơ" },
-        { keywords: ["hai phong"], value: "Thành phố Hải Phòng" },
-        { keywords: ["hue"], value: "Thành phố Huế" }
-      ];
-
-      for (const alias of manualProvinceAliases) {
-        for (const keyword of alias.keywords) {
-          if (normalized.includes(normalizeText(keyword))) {
-            return alias.value;
-          }
-        }
-      }
-
-      const sortedStates = [...stateList].sort((a, b) => b.stateCore.length - a.stateCore.length);
-
-      for (const state of sortedStates) {
-        if (state.stateCore && state.stateCore.length >= 3 && normalized.includes(state.stateCore)) {
-          return state.state;
-        }
-      }
-
-      const inferred = inferProvinceByWard(normalized, addressDb);
-      if (inferred) {
-        return inferred;
-      }
-
-      return "NEED CHECK";
-    }
-
-    function mapWard(row, province, addressDb) {
-      const fullText = getFullAddressText(row);
-      const normalized = normalizeText(fullText);
-
-      const ward = findBestWard(normalized, province, addressDb);
-
-      if (ward) {
-        return ward;
-      }
-
+      if (uniqueWards.length === 1) return topMatches[0].item.ward;
       return "NEED CHECK";
     }
 
     function buildVietnamRows(shopifyRows, addressDb, stateList) {
       const orders = {};
       let lastOrderId = "";
-
       const hasRealId = shopifyRows.some(row => getRealShopifyId(row));
 
       shopifyRows.forEach(row => {
@@ -430,11 +350,7 @@
 
         if (hasRealId) {
           const realId = getRealShopifyId(row);
-
-          if (realId) {
-            lastOrderId = realId;
-          }
-
+          if (realId) lastOrderId = realId;
           orderNo = realId || lastOrderId;
         } else {
           orderNo = getValue(row, "Name");
@@ -442,26 +358,13 @@
 
         if (!orderNo) return;
 
-        if (!orders[orderNo]) {
-          orders[orderNo] = {
-            base: row,
-            items: []
-          };
-        }
+        if (!orders[orderNo]) orders[orderNo] = { base: row, items: [] };
 
         const qty = cleanNumber(getValue(row, "Lineitem quantity")) || 1;
         const price = cleanNumber(getValue(row, "Lineitem price"));
+        const itemName = getValue(row, "Lineitem name") || getValue(row, "Lineitem sku") || "Skechers product";
 
-        const itemName =
-          getValue(row, "Lineitem name") ||
-          getValue(row, "Lineitem sku") ||
-          "Skechers product";
-
-        orders[orderNo].items.push({
-          name: itemName,
-          qty: qty,
-          price: price
-        });
+        orders[orderNo].items.push({ name: itemName, qty, price });
       });
 
       const outputRows = [];
@@ -477,23 +380,11 @@
         const productName = shortProductName(items, totalQty);
 
         const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
-        const phone = cleanPhone(
-          getValue(base, "Shipping Phone") ||
-          getValue(base, "Billing Phone") ||
-          getValue(base, "Phone")
-        );
-
+        const phone = cleanPhone(getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone"));
         const province = mapProvince(base, addressDb, stateList);
         const ward = mapWard(base, province, addressDb);
         const address = buildAddress(base);
-
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
-
-        const defaultWeight = 2;
-        const defaultLength = 14;
-        const defaultWidth = 28;
-        const defaultHeight = 36;
-        const customerId = orderNo;
 
         if (!receiverName) warnings.push(`${orderNo}: missing receiver name`);
         if (!phone) warnings.push(`${orderNo}: missing phone`);
@@ -513,11 +404,11 @@
           productName,
           totalQty,
           totalProductPrice,
-          defaultWeight,
-          defaultLength,
-          defaultWidth,
-          defaultHeight,
-          customerId,
+          2,
+          14,
+          28,
+          36,
+          orderNo,
           orderValue,
           "N",
           "N",
@@ -537,48 +428,10 @@
       return { outputRows, warnings };
     }
 
-    function clearOutputSheet(sheet) {
-      const ref = sheet["!ref"] || "A1:AC1";
-      const range = XLSX.utils.decode_range(ref);
-
-      const maxRow = Math.max(range.e.r, 500);
-      const maxCol = 28;
-
-      for (let r = 1; r <= maxRow; r++) {
-        for (let c = 0; c <= maxCol; c++) {
-          const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
-          delete sheet[cellRef];
-        }
-      }
-
-      sheet["!ref"] = "A1:AC1";
-    }
-
-    function writeRowsToTemplate(workbook, outputRows) {
-      const sheet = workbook.Sheets[TARGET_SHEET_NAME];
-
-      if (!sheet) {
-        throw new Error(`SPX template missing sheet: ${TARGET_SHEET_NAME}`);
-      }
-
-      clearOutputSheet(sheet);
-
-      if (outputRows.length > 0) {
-        XLSX.utils.sheet_add_aoa(sheet, outputRows, { origin: "A2" });
-        sheet["!ref"] = XLSX.utils.encode_range({
-          s: { r: 0, c: 0 },
-          e: { r: outputRows.length, c: 28 }
-        });
-      }
-
-      return workbook;
-    }
-
     async function generateTemplate() {
       const country = document.getElementById("country").value;
       const encoding = document.getElementById("encoding").value;
       const csvInput = document.getElementById("csvFile");
-      const spxTemplateInput = document.getElementById("spxTemplateFile");
       const resultBox = document.getElementById("result");
 
       resultBox.style.display = "block";
@@ -598,16 +451,14 @@
           return;
         }
 
-        if (!spxTemplateInput.files.length) {
+        if (!window.VN_ADDRESS_DB || !window.VN_STATE_LIST) {
           resultBox.className = "result error";
-          resultBox.innerText = "Please upload the SPX Vietnam bulk upload template. This is needed to read SPX official province/ward list.";
+          resultBox.innerText = "VN address database is missing. Please add vn-address-db.js into the same GitHub repository.";
           return;
         }
 
+        const { addressDb, stateList } = prepareAddressDb();
         const shopifyRows = await parseCsvFile(csvInput.files[0], encoding);
-        const spxWorkbook = await readWorkbookFile(spxTemplateInput.files[0]);
-
-        const { addressDb, stateList } = extractVNAddressDatabase(spxWorkbook);
         const { outputRows, warnings } = buildVietnamRows(shopifyRows, addressDb, stateList);
 
         if (outputRows.length === 0) {
@@ -616,21 +467,31 @@
           return;
         }
 
-        const finalWorkbook = writeRowsToTemplate(spxWorkbook, outputRows);
+        const workbook = XLSX.utils.book_new();
+        const worksheet = XLSX.utils.aoa_to_sheet([vnHeaders, ...outputRows]);
+
+        worksheet["!cols"] = [
+          { wch: 20 }, { wch: 24 }, { wch: 16 }, { wch: 26 }, { wch: 26 },
+          { wch: 60 }, { wch: 20 }, { wch: 12 }, { wch: 60 }, { wch: 12 },
+          { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+          { wch: 20 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 18 },
+          { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 18 },
+          { wch: 18 }, { wch: 24 }, { wch: 28 }, { wch: 32 }
+        ];
+
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Tạo đơn (địa chỉ mới)");
 
         const fileName = "SPX_Vietnam_Mapped_Template.xlsx";
-        XLSX.writeFile(finalWorkbook, fileName);
+        XLSX.writeFile(workbook, fileName);
 
         let message = `Generated successfully.\nTotal orders: ${outputRows.length}\nDownloaded file: ${fileName}`;
-
         if (warnings.length > 0) {
           message += `\n\nNeed checking:\n- ${warnings.join("\n- ")}`;
         } else {
-          message += `\n\nNo missing province/ward detected. Please still test upload in SPX before live operation.`;
+          message += "\n\nNo missing province/ward detected. Please still test upload in SPX before live operation.";
         }
 
         resultBox.innerText = message;
-
       } catch (error) {
         resultBox.className = "result error";
         resultBox.innerText = "Generation failed: " + error.message;
