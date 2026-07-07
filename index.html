@@ -10,7 +10,7 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      max-width: 900px;
+      max-width: 950px;
       margin: 40px auto;
       padding: 20px;
       background: #f7f7f7;
@@ -60,6 +60,7 @@
       background: #fff8dc;
       border-left: 4px solid #d4a017;
       font-size: 14px;
+      line-height: 1.5;
     }
 
     .result {
@@ -70,6 +71,7 @@
       display: none;
       white-space: pre-line;
       font-size: 14px;
+      line-height: 1.5;
     }
 
     .error {
@@ -90,13 +92,22 @@
       <option value="TH">Thailand - SPX</option>
     </select>
 
+    <label>CSV Encoding</label>
+    <select id="encoding">
+      <option value="UTF-8">UTF-8</option>
+      <option value="windows-1258">Windows-1258 Vietnamese</option>
+      <option value="ISO-8859-1">ISO-8859-1</option>
+    </select>
+
     <label>Upload Shopify Order Report CSV</label>
     <input type="file" id="csvFile" accept=".csv">
 
     <button onclick="generateTemplate()">Generate Template</button>
 
     <div class="note">
-      Current version: Vietnam mapping is active. Thailand mapping will be added after we confirm the TH SPX bulk upload template.
+      Current version: Vietnam mapping is active. Thailand mapping will be added after we confirm the TH SPX bulk upload template.<br>
+      VN default parcel setting: 2KG, 14cm x 28cm x 36cm.<br>
+      If Vietnamese customer names appear as strange characters, try changing CSV Encoding to Windows-1258 and generate again.
     </div>
 
     <div id="result" class="result"></div>
@@ -137,6 +148,30 @@
       {
         keywords: ["ho chi minh", "hồ chí minh", "hcm", "tp hcm", "tp hồ chí minh", "thành phố hồ chí minh"],
         value: "Thành phố Hồ Chí Minh"
+      },
+      {
+        keywords: ["ha noi", "hà nội", "hanoi"],
+        value: "Thành phố Hà Nội"
+      },
+      {
+        keywords: ["can tho", "cần thơ"],
+        value: "Thành phố Cần Thơ"
+      },
+      {
+        keywords: ["binh duong", "bình dương"],
+        value: "Tỉnh Bình Dương"
+      },
+      {
+        keywords: ["bac ninh", "bắc ninh"],
+        value: "Tỉnh Bắc Ninh"
+      },
+      {
+        keywords: ["dong nai", "đồng nai"],
+        value: "Tỉnh Đồng Nai"
+      },
+      {
+        keywords: ["da nang", "đà nẵng"],
+        value: "Thành phố Đà Nẵng"
       }
     ];
 
@@ -166,10 +201,15 @@
       return row[key] || "";
     }
 
+    function getOrderId(row) {
+      return getValue(row, "Id") || getValue(row, "ID") || getValue(row, "Order ID") || getValue(row, "Name");
+    }
+
     function mapProvince(row) {
       const combined = [
         getValue(row, "Shipping City"),
         getValue(row, "Shipping Province"),
+        getValue(row, "Shipping Province Name"),
         getValue(row, "Shipping Street"),
         getValue(row, "Shipping Address1"),
         getValue(row, "Shipping Address2")
@@ -185,7 +225,9 @@
         }
       }
 
-      return getValue(row, "Shipping City") || "NEED CHECK";
+      const fallback = getValue(row, "Shipping Province Name") || getValue(row, "Shipping Province") || getValue(row, "Shipping City");
+
+      return fallback || "NEED CHECK";
     }
 
     function mapWard(row) {
@@ -193,7 +235,8 @@
         getValue(row, "Shipping Street"),
         getValue(row, "Shipping Address1"),
         getValue(row, "Shipping Address2"),
-        getValue(row, "Shipping City")
+        getValue(row, "Shipping City"),
+        getValue(row, "Shipping Province")
       ].join(" ");
 
       const normalized = normalizeText(combined);
@@ -218,11 +261,29 @@
       return Number(value.toString().replace(/[^0-9.-]/g, "")) || 0;
     }
 
+    function shortProductName(items, totalQty) {
+      let productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
+
+      if (productName.length > 250) {
+        productName = `Skechers footwear - ${items.length} styles / ${totalQty} pairs`;
+      }
+
+      return productName;
+    }
+
     function buildVietnamRows(shopifyRows) {
       const orders = {};
+      let lastOrderNo = "";
 
       shopifyRows.forEach(row => {
-        const orderNo = getValue(row, "Name");
+        const detectedOrderNo = getOrderId(row);
+
+        if (detectedOrderNo) {
+          lastOrderNo = detectedOrderNo;
+        }
+
+        const orderNo = detectedOrderNo || lastOrderNo;
+
         if (!orderNo) return;
 
         if (!orders[orderNo]) {
@@ -235,8 +296,13 @@
         const qty = cleanNumber(getValue(row, "Lineitem quantity")) || 1;
         const price = cleanNumber(getValue(row, "Lineitem price"));
 
+        const itemName =
+          getValue(row, "Lineitem name") ||
+          getValue(row, "Lineitem sku") ||
+          "Skechers product";
+
         orders[orderNo].items.push({
-          name: getValue(row, "Lineitem name"),
+          name: itemName,
           qty: qty,
           price: price
         });
@@ -252,12 +318,7 @@
 
         const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
         const totalProductPrice = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
-
-        let productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
-
-        if (productName.length > 250) {
-            productName = `Skechers footwear - ${items.length} styles / ${totalQty} pairs`;
-            }
+        const productName = shortProductName(items, totalQty);
 
         const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
         const phone = cleanPhone(getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone"));
@@ -272,10 +333,15 @@
         const zip = "";
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
 
-        const defaultWeight = totalQty || 1;
+        const defaultWeight = 2;
+        const defaultLength = 14;
+        const defaultWidth = 28;
+        const defaultHeight = 36;
+        const customerId = orderNo;
 
         if (!receiverName) warnings.push(`${orderNo}: missing receiver name`);
         if (!phone) warnings.push(`${orderNo}: missing phone`);
+        if (!address) warnings.push(`${orderNo}: missing address`);
         if (province === "NEED CHECK") warnings.push(`${orderNo}: province needs checking`);
         if (ward === "NEED CHECK") warnings.push(`${orderNo}: ward needs checking`);
 
@@ -292,10 +358,10 @@
           totalQty,
           totalProductPrice,
           defaultWeight,
-          "",
-          "",
-          "",
-          "",
+          defaultLength,
+          defaultWidth,
+          defaultHeight,
+          customerId,
           orderValue,
           "N",
           "N",
@@ -315,6 +381,7 @@
 
     function generateTemplate() {
       const country = document.getElementById("country").value;
+      const encoding = document.getElementById("encoding").value;
       const fileInput = document.getElementById("csvFile");
       const resultBox = document.getElementById("result");
 
@@ -337,9 +404,16 @@
       Papa.parse(fileInput.files[0], {
         header: true,
         skipEmptyLines: true,
+        encoding: encoding,
         complete: function(results) {
           const shopifyRows = results.data;
           const { outputRows, warnings } = buildVietnamRows(shopifyRows);
+
+          if (outputRows.length === 0) {
+            resultBox.className = "result error";
+            resultBox.innerText = "No valid orders found. Please check whether this is the correct Shopify order report CSV.";
+            return;
+          }
 
           const workbook = XLSX.utils.book_new();
           const sheetData = [vnHeaders, ...outputRows];
@@ -347,12 +421,33 @@
           const worksheet = XLSX.utils.aoa_to_sheet(sheetData);
 
           worksheet["!cols"] = [
-            { wch: 18 }, { wch: 24 }, { wch: 16 }, { wch: 24 }, { wch: 24 },
-            { wch: 40 }, { wch: 20 }, { wch: 12 }, { wch: 60 }, { wch: 12 },
-            { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
-            { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 18 },
-            { wch: 18 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 18 },
-            { wch: 18 }, { wch: 24 }
+            { wch: 18 },
+            { wch: 24 },
+            { wch: 16 },
+            { wch: 26 },
+            { wch: 26 },
+            { wch: 55 },
+            { wch: 20 },
+            { wch: 12 },
+            { wch: 60 },
+            { wch: 12 },
+            { wch: 14 },
+            { wch: 14 },
+            { wch: 12 },
+            { wch: 12 },
+            { wch: 12 },
+            { wch: 18 },
+            { wch: 16 },
+            { wch: 14 },
+            { wch: 14 },
+            { wch: 18 },
+            { wch: 18 },
+            { wch: 18 },
+            { wch: 12 },
+            { wch: 14 },
+            { wch: 18 },
+            { wch: 18 },
+            { wch: 24 }
           ];
 
           XLSX.utils.book_append_sheet(workbook, worksheet, "Tạo đơn (địa chỉ mới)");
