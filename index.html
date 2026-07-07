@@ -198,11 +198,31 @@
     }
 
     function getValue(row, key) {
-      return row[key] || "";
+      const value = row[key];
+
+      if (value === undefined || value === null) {
+        return "";
+      }
+
+      const cleanValue = value.toString().trim();
+
+      if (
+        cleanValue.toLowerCase() === "none" ||
+        cleanValue.toLowerCase() === "null" ||
+        cleanValue.toLowerCase() === "undefined"
+      ) {
+        return "";
+      }
+
+      return cleanValue;
     }
 
-    function getOrderId(row) {
-      return getValue(row, "Id") || getValue(row, "ID") || getValue(row, "Order ID") || getValue(row, "Name");
+    function getRealShopifyId(row) {
+      return (
+        getValue(row, "Id") ||
+        getValue(row, "ID") ||
+        getValue(row, "Order ID")
+      );
     }
 
     function mapProvince(row) {
@@ -225,7 +245,10 @@
         }
       }
 
-      const fallback = getValue(row, "Shipping Province Name") || getValue(row, "Shipping Province") || getValue(row, "Shipping City");
+      const fallback =
+        getValue(row, "Shipping Province Name") ||
+        getValue(row, "Shipping Province") ||
+        getValue(row, "Shipping City");
 
       return fallback || "NEED CHECK";
     }
@@ -236,7 +259,8 @@
         getValue(row, "Shipping Address1"),
         getValue(row, "Shipping Address2"),
         getValue(row, "Shipping City"),
-        getValue(row, "Shipping Province")
+        getValue(row, "Shipping Province"),
+        getValue(row, "Shipping Province Name")
       ].join(" ");
 
       const normalized = normalizeText(combined);
@@ -261,6 +285,16 @@
       return Number(value.toString().replace(/[^0-9.-]/g, "")) || 0;
     }
 
+    function buildAddress(row) {
+      return [
+        getValue(row, "Shipping Address1"),
+        getValue(row, "Shipping Address2"),
+        getValue(row, "Shipping City")
+      ]
+      .filter(Boolean)
+      .join(", ");
+    }
+
     function shortProductName(items, totalQty) {
       let productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
 
@@ -273,16 +307,24 @@
 
     function buildVietnamRows(shopifyRows) {
       const orders = {};
-      let lastOrderNo = "";
+      let lastOrderId = "";
+
+      const hasRealId = shopifyRows.some(row => getRealShopifyId(row));
 
       shopifyRows.forEach(row => {
-        const detectedOrderNo = getOrderId(row);
+        let orderNo = "";
 
-        if (detectedOrderNo) {
-          lastOrderNo = detectedOrderNo;
+        if (hasRealId) {
+          const realId = getRealShopifyId(row);
+
+          if (realId) {
+            lastOrderId = realId;
+          }
+
+          orderNo = realId || lastOrderId;
+        } else {
+          orderNo = getValue(row, "Name");
         }
-
-        const orderNo = detectedOrderNo || lastOrderNo;
 
         if (!orderNo) return;
 
@@ -321,14 +363,15 @@
         const productName = shortProductName(items, totalQty);
 
         const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
-        const phone = cleanPhone(getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone"));
+        const phone = cleanPhone(
+          getValue(base, "Shipping Phone") ||
+          getValue(base, "Billing Phone") ||
+          getValue(base, "Phone")
+        );
+
         const province = mapProvince(base);
         const ward = mapWard(base);
-
-        const address = [
-          getValue(base, "Shipping Address1"),
-          getValue(base, "Shipping Address2")
-        ].filter(Boolean).join(", ");
+        const address = buildAddress(base);
 
         const zip = "";
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
