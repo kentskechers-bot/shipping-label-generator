@@ -6,6 +6,7 @@
 
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="./vn-address-db.js"></script>
 
   <style>
     body {
@@ -86,6 +87,7 @@
     <select id="country">
       <option value="VN">Vietnam - SPX</option>
       <option value="TH">Thailand - SPX</option>
+      <option value="SG">Singapore - SPX</option>
     </select>
 
     <label>CSV Encoding</label>
@@ -100,19 +102,16 @@
 
     <button onclick="generateTemplate()">Generate Template</button>
 
-    <div class="note">
-      Vietnam and Thailand mapping are active.<br>
+    <div id="countryNote" class="note">
+      Vietnam, Thailand and Singapore mappings are active.<br>
       Default parcel setting: 2KG, 14cm x 28cm x 36cm.<br>
-      Backend template files required in GitHub root: spx-vn-template.xlsx and spx-th-template.xlsx.
+      Select a country and upload the corresponding Shopify order report.
     </div>
 
     <div id="result" class="result"></div>
   </div>
 
   <script>
-    const VN_TEMPLATE_FILE = "./spx-vn-template.xlsx";
-    const TH_TEMPLATE_FILE = "./spx-th-template.xlsx";
-
     const vnHeaders = [
       "*Mã đơn hàng",
       "*Tên người nhận",
@@ -168,107 +167,40 @@
       "คำแนะนำในการจัดส่ง/Delivery Instruction"
     ];
 
-    const thProvinceAliases = {
-      "TH-10": "กรุงเทพมหานคร",
-      "TH-11": "สมุทรปราการ",
-      "TH-12": "นนทบุรี",
-      "TH-13": "ปทุมธานี",
-      "TH-14": "พระนครศรีอยุธยา",
-      "TH-15": "อ่างทอง",
-      "TH-16": "ลพบุรี",
-      "TH-17": "สิงห์บุรี",
-      "TH-18": "ชัยนาท",
-      "TH-19": "สระบุรี",
-      "TH-20": "ชลบุรี",
-      "TH-21": "ระยอง",
-      "TH-22": "จันทบุรี",
-      "TH-23": "ตราด",
-      "TH-24": "ฉะเชิงเทรา",
-      "TH-25": "ปราจีนบุรี",
-      "TH-26": "นครนายก",
-      "TH-27": "สระแก้ว",
-      "TH-30": "นครราชสีมา",
-      "TH-31": "บุรีรัมย์",
-      "TH-32": "สุรินทร์",
-      "TH-33": "ศรีสะเกษ",
-      "TH-34": "อุบลราชธานี",
-      "TH-35": "ยโสธร",
-      "TH-36": "ชัยภูมิ",
-      "TH-37": "อำนาจเจริญ",
-      "TH-38": "บึงกาฬ",
-      "TH-39": "หนองบัวลำภู",
-      "TH-40": "ขอนแก่น",
-      "TH-41": "อุดรธานี",
-      "TH-42": "เลย",
-      "TH-43": "หนองคาย",
-      "TH-44": "มหาสารคาม",
-      "TH-45": "ร้อยเอ็ด",
-      "TH-46": "กาฬสินธุ์",
-      "TH-47": "สกลนคร",
-      "TH-48": "นครพนม",
-      "TH-49": "มุกดาหาร",
-      "TH-50": "เชียงใหม่",
-      "TH-51": "ลำพูน",
-      "TH-52": "ลำปาง",
-      "TH-53": "อุตรดิตถ์",
-      "TH-54": "แพร่",
-      "TH-55": "น่าน",
-      "TH-56": "พะเยา",
-      "TH-57": "เชียงราย",
-      "TH-58": "แม่ฮ่องสอน",
-      "TH-60": "นครสวรรค์",
-      "TH-61": "อุทัยธานี",
-      "TH-62": "กำแพงเพชร",
-      "TH-63": "ตาก",
-      "TH-64": "สุโขทัย",
-      "TH-65": "พิษณุโลก",
-      "TH-66": "พิจิตร",
-      "TH-67": "เพชรบูรณ์",
-      "TH-70": "ราชบุรี",
-      "TH-71": "กาญจนบุรี",
-      "TH-72": "สุพรรณบุรี",
-      "TH-73": "นครปฐม",
-      "TH-74": "สมุทรสาคร",
-      "TH-75": "สมุทรสงคราม",
-      "TH-76": "เพชรบุรี",
-      "TH-77": "ประจวบคีรีขันธ์",
-      "TH-80": "นครศรีธรรมราช",
-      "TH-81": "กระบี่",
-      "TH-82": "พังงา",
-      "TH-83": "ภูเก็ต",
-      "TH-84": "สุราษฎร์ธานี",
-      "TH-85": "ระนอง",
-      "TH-86": "ชุมพร",
-      "TH-90": "สงขลา",
-      "TH-91": "สตูล",
-      "TH-92": "ตรัง",
-      "TH-93": "พัทลุง",
-      "TH-94": "ปัตตานี",
-      "TH-95": "ยะลา",
-      "TH-96": "นราธิวาส",
-      "bangkok": "กรุงเทพมหานคร",
-      "satun": "สตูล",
-      "phatthalung": "พัทลุง",
-      "mae hong son": "แม่ฮ่องสอน"
-    };
-
-    const thManualAddressAliases = [
-      {
-        keywords: ["tungyao", "tung yao", "thung yao"],
-        subDistrict: "ทุ่งยาว",
-        district: "ปาย",
-        province: "แม่ฮ่องสอน"
-      },
-      {
-        keywords: ["pai"],
-        district: "ปาย",
-        province: "แม่ฮ่องสอน"
-      },
-      {
-        keywords: ["mae hong son"],
-        province: "แม่ฮ่องสอน"
-      }
+    const sgHeaders = [
+      "*Recipient Name",
+      "*Phone Number",
+      "*Postal Code",
+      "Street name, Building",
+      "Unit No",
+      "*Parcel Weight (KG)",
+      "Parcel Length (CM)",
+      "Parcel Width (CM)",
+      "Parcel Height (CM)",
+      "*Item Name",
+      "Item Quantity",
+      "Customer Reference Number",
+      "*Parcel Value",
+      "Delivery Instruction"
     ];
+
+    const countryNotes = {
+      VN: [
+        "Vietnam mapping is active.",
+        "Default parcel setting: 2KG, 14cm x 28cm x 36cm.",
+        "Province and ward names are matched against the built-in SPX Vietnam address database."
+      ],
+      TH: [
+        "Thailand mapping is active.",
+        "Default parcel setting: 2KG, 14cm x 28cm x 36cm.",
+        "Province codes are converted to Thai SPX wording; city and sub-district are mapped from the Shopify address."
+      ],
+      SG: [
+        "Singapore mapping is active.",
+        "Default parcel setting: 2KG, 14cm x 28cm x 36cm.",
+        "Phone numbers are normalized to 8 digits, postal codes to 6 digits, and unit numbers are separated when detected."
+      ]
+    };
 
     function cleanOutputText(value) {
       return (value || "")
@@ -288,7 +220,7 @@
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/đ/g, "d")
-        .replace(/[^\u0E00-\u0E7Fa-z0-9\s]/g, " ")
+        .replace(/[^a-z0-9\s]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
     }
@@ -300,13 +232,6 @@
         .replace(/^phuong\s+/, "")
         .replace(/^xa\s+/, "")
         .replace(/^thi tran\s+/, "")
-        .replace(/^จังหวัด\s*/, "")
-        .replace(/^อำเภอ\s*/, "")
-        .replace(/^เขต\s*/, "")
-        .replace(/^ตำบล\s*/, "")
-        .replace(/^แขวง\s*/, "")
-        .replace(/^ต\s+/, "")
-        .replace(/^อ\s+/, "")
         .trim();
     }
 
@@ -324,25 +249,30 @@
       return (phone || "").toString().replace(/[^0-9+]/g, "");
     }
 
-    function cleanTHPhone(phone) {
-      let digits = (phone || "").toString().replace(/\D/g, "");
+    function cleanDigits(value) {
+      return (value || "").toString().replace(/\D/g, "");
+    }
 
-      if (digits.startsWith("660")) {
-        digits = "0" + digits.slice(3);
-      } else if (digits.startsWith("66")) {
-        digits = "0" + digits.slice(2);
-      }
+    function cleanPostalCode(value) {
+      return cleanDigits(value);
+    }
 
+    function cleanSingaporePhone(phone) {
+      let digits = cleanDigits(phone);
+      if (digits.startsWith("0065") && digits.length > 8) digits = digits.slice(4);
+      if (digits.startsWith("65") && digits.length === 10) digits = digits.slice(2);
+      return digits;
+    }
+
+    function cleanSingaporePostalCode(value) {
+      const digits = cleanPostalCode(value);
+      if (digits && digits.length < 6) return digits.padStart(6, "0");
       return digits;
     }
 
     function cleanNumber(value) {
       if (!value) return 0;
       return Number(value.toString().replace(/[^0-9.-]/g, "")) || 0;
-    }
-
-    function cleanZip(value) {
-      return (value || "").toString().replace(/[^0-9]/g, "");
     }
 
     function buildAddress(row) {
@@ -355,44 +285,10 @@
 
     function shortProductName(items, totalQty) {
       let productName = items.map(item => `${item.name} x ${item.qty}`).join("; ");
-
       if (productName.length > 250) {
         productName = `Skechers footwear - ${items.length} styles / ${totalQty} pairs`;
       }
-
       return productName;
-    }
-
-    function parseCsvFile(file, encoding) {
-      return new Promise((resolve, reject) => {
-        Papa.parse(file, {
-          header: true,
-          skipEmptyLines: true,
-          encoding: encoding,
-          complete: function(results) {
-            resolve(results.data);
-          },
-          error: function(error) {
-            reject(error);
-          }
-        });
-      });
-    }
-
-    async function fetchWorkbook(filePath) {
-      const response = await fetch(filePath + "?v=" + Date.now());
-
-      if (!response.ok) {
-        throw new Error("Cannot load backend template file: " + filePath);
-      }
-
-      const buffer = await response.arrayBuffer();
-
-      return XLSX.read(buffer, {
-        type: "array",
-        cellDates: false,
-        raw: true
-      });
     }
 
     function groupShopifyOrders(shopifyRows) {
@@ -412,30 +308,131 @@
         }
 
         if (!orderNo) return;
-
-        if (!orders[orderNo]) {
-          orders[orderNo] = {
-            base: row,
-            items: []
-          };
-        }
+        if (!orders[orderNo]) orders[orderNo] = { orderNo, base: row, items: [] };
 
         const qty = cleanNumber(getValue(row, "Lineitem quantity")) || 1;
         const price = cleanNumber(getValue(row, "Lineitem price"));
+        const itemName = getValue(row, "Lineitem name") || getValue(row, "Lineitem sku") || "Skechers product";
 
-        const itemName =
-          getValue(row, "Lineitem name") ||
-          getValue(row, "Lineitem sku") ||
-          "Skechers product";
-
-        orders[orderNo].items.push({
-          name: itemName,
-          qty: qty,
-          price: price
-        });
+        orders[orderNo].items.push({ name: itemName, qty, price });
       });
 
-      return orders;
+      return Object.values(orders);
+    }
+
+    const thProvinceData = {
+      "TH-10": ["Bangkok", "กรุงเทพมหานคร"],
+      "TH-11": ["Samut Prakan", "สมุทรปราการ"],
+      "TH-12": ["Nonthaburi", "นนทบุรี"],
+      "TH-13": ["Pathum Thani", "ปทุมธานี"],
+      "TH-14": ["Phra Nakhon Si Ayutthaya", "พระนครศรีอยุธยา"],
+      "TH-15": ["Ang Thong", "อ่างทอง"],
+      "TH-16": ["Lop Buri", "ลพบุรี"],
+      "TH-17": ["Sing Buri", "สิงห์บุรี"],
+      "TH-18": ["Chai Nat", "ชัยนาท"],
+      "TH-19": ["Saraburi", "สระบุรี"],
+      "TH-20": ["Chon Buri", "ชลบุรี"],
+      "TH-21": ["Rayong", "ระยอง"],
+      "TH-22": ["Chanthaburi", "จันทบุรี"],
+      "TH-23": ["Trat", "ตราด"],
+      "TH-24": ["Chachoengsao", "ฉะเชิงเทรา"],
+      "TH-25": ["Prachin Buri", "ปราจีนบุรี"],
+      "TH-26": ["Nakhon Nayok", "นครนายก"],
+      "TH-27": ["Sa Kaeo", "สระแก้ว"],
+      "TH-30": ["Nakhon Ratchasima", "นครราชสีมา"],
+      "TH-31": ["Buri Ram", "บุรีรัมย์"],
+      "TH-32": ["Surin", "สุรินทร์"],
+      "TH-33": ["Si Sa Ket", "ศรีสะเกษ"],
+      "TH-34": ["Ubon Ratchathani", "อุบลราชธานี"],
+      "TH-35": ["Yasothon", "ยโสธร"],
+      "TH-36": ["Chaiyaphum", "ชัยภูมิ"],
+      "TH-37": ["Amnat Charoen", "อำนาจเจริญ"],
+      "TH-38": ["Bueng Kan", "บึงกาฬ"],
+      "TH-39": ["Nong Bua Lam Phu", "หนองบัวลำภู"],
+      "TH-40": ["Khon Kaen", "ขอนแก่น"],
+      "TH-41": ["Udon Thani", "อุดรธานี"],
+      "TH-42": ["Loei", "เลย"],
+      "TH-43": ["Nong Khai", "หนองคาย"],
+      "TH-44": ["Maha Sarakham", "มหาสารคาม"],
+      "TH-45": ["Roi Et", "ร้อยเอ็ด"],
+      "TH-46": ["Kalasin", "กาฬสินธุ์"],
+      "TH-47": ["Sakon Nakhon", "สกลนคร"],
+      "TH-48": ["Nakhon Phanom", "นครพนม"],
+      "TH-49": ["Mukdahan", "มุกดาหาร"],
+      "TH-50": ["Chiang Mai", "เชียงใหม่"],
+      "TH-51": ["Lamphun", "ลำพูน"],
+      "TH-52": ["Lampang", "ลำปาง"],
+      "TH-53": ["Uttaradit", "อุตรดิตถ์"],
+      "TH-54": ["Phrae", "แพร่"],
+      "TH-55": ["Nan", "น่าน"],
+      "TH-56": ["Phayao", "พะเยา"],
+      "TH-57": ["Chiang Rai", "เชียงราย"],
+      "TH-58": ["Mae Hong Son", "แม่ฮ่องสอน"],
+      "TH-60": ["Nakhon Sawan", "นครสวรรค์"],
+      "TH-61": ["Uthai Thani", "อุทัยธานี"],
+      "TH-62": ["Kamphaeng Phet", "กำแพงเพชร"],
+      "TH-63": ["Tak", "ตาก"],
+      "TH-64": ["Sukhothai", "สุโขทัย"],
+      "TH-65": ["Phitsanulok", "พิษณุโลก"],
+      "TH-66": ["Phichit", "พิจิตร"],
+      "TH-67": ["Phetchabun", "เพชรบูรณ์"],
+      "TH-70": ["Ratchaburi", "ราชบุรี"],
+      "TH-71": ["Kanchanaburi", "กาญจนบุรี"],
+      "TH-72": ["Suphan Buri", "สุพรรณบุรี"],
+      "TH-73": ["Nakhon Pathom", "นครปฐม"],
+      "TH-74": ["Samut Sakhon", "สมุทรสาคร"],
+      "TH-75": ["Samut Songkhram", "สมุทรสงคราม"],
+      "TH-76": ["Phetchaburi", "เพชรบุรี"],
+      "TH-77": ["Prachuap Khiri Khan", "ประจวบคีรีขันธ์"],
+      "TH-80": ["Nakhon Si Thammarat", "นครศรีธรรมราช"],
+      "TH-81": ["Krabi", "กระบี่"],
+      "TH-82": ["Phang Nga", "พังงา"],
+      "TH-83": ["Phuket", "ภูเก็ต"],
+      "TH-84": ["Surat Thani", "สุราษฎร์ธานี"],
+      "TH-85": ["Ranong", "ระนอง"],
+      "TH-86": ["Chumphon", "ชุมพร"],
+      "TH-90": ["Songkhla", "สงขลา"],
+      "TH-91": ["Satun", "สตูล"],
+      "TH-92": ["Trang", "ตรัง"],
+      "TH-93": ["Phatthalung", "พัทลุง"],
+      "TH-94": ["Pattani", "ปัตตานี"],
+      "TH-95": ["Yala", "ยะลา"],
+      "TH-96": ["Narathiwat", "นราธิวาส"]
+    };
+
+    function normalizeLatinKey(value) {
+      return cleanOutputText(value)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    }
+
+    const thProvinceByEnglish = Object.values(thProvinceData).reduce((map, entry) => {
+      map[normalizeLatinKey(entry[0])] = entry[1];
+      return map;
+    }, {});
+
+    const thCityAliases = {
+      "pai": "ปาย"
+    };
+
+    const thSubdistrictAliases = {
+      "tungyao": "ทุ่งยาว",
+      "tung yao": "ทุ่งยาว"
+    };
+
+    function parseCsvFile(file, encoding) {
+      return new Promise((resolve, reject) => {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          encoding: encoding,
+          complete: function(results) { resolve(results.data); },
+          error: function(error) { reject(error); }
+        });
+      });
     }
 
     function getFullAddressText(row) {
@@ -451,41 +448,25 @@
       ].join(" ");
     }
 
-    function extractVNAddressDatabase(workbook) {
-      const citySheet = workbook.Sheets["City_list(2)"];
-      const stateSheet = workbook.Sheets["State_list(2)"];
-
-      if (!citySheet) {
-        throw new Error("VN template missing hidden sheet: City_list(2)");
-      }
-
-      const cityRows = XLSX.utils.sheet_to_json(citySheet, { header: 1, defval: "" });
-      const stateRows = stateSheet ? XLSX.utils.sheet_to_json(stateSheet, { header: 1, defval: "" }) : [];
-
-      const addressDb = [];
-
-      cityRows.slice(1).forEach(row => {
-        const province = cleanOutputText(row[0]);
-        const ward = cleanOutputText(row[1]);
-        if (!province || !ward) return;
-
-        addressDb.push({
+    function prepareAddressDb() {
+      const addressDb = (window.VN_ADDRESS_DB || []).map(item => {
+        const province = cleanOutputText(item.province);
+        const ward = cleanOutputText(item.ward);
+        return {
           province,
           ward,
+          provinceNorm: normalizeText(province),
           provinceCore: removeAdminPrefix(province),
           wardNorm: normalizeText(ward),
           wardCore: removeAdminPrefix(ward)
-        });
+        };
       });
 
-      const stateList = stateRows
-        .slice(1)
-        .map(row => cleanOutputText(row[0]))
-        .filter(Boolean)
-        .map(state => ({
-          state,
-          stateCore: removeAdminPrefix(state)
-        }));
+      const stateList = (window.VN_STATE_LIST || []).map(state => ({
+        state: cleanOutputText(state),
+        stateNorm: normalizeText(state),
+        stateCore: removeAdminPrefix(state)
+      }));
 
       return { addressDb, stateList };
     }
@@ -493,7 +474,6 @@
     function scoreWardCandidate(normalizedText, entry) {
       const core = entry.wardCore;
       const wardNorm = entry.wardNorm;
-
       if (!core || core.length < 3) return 0;
 
       let score = 0;
@@ -513,7 +493,7 @@
       return score;
     }
 
-    function inferVNProvinceByAlias(normalizedText) {
+    function inferProvinceByAlias(normalizedText) {
       const aliases = [
         { keys: ["hcm", "tp hcm", "tphcm", "ho chi minh"], province: "Thành phố Hồ Chí Minh" },
         { keys: ["ha noi", "hanoi"], province: "Thành phố Hà Nội" },
@@ -533,14 +513,13 @@
       return "";
     }
 
-    function mapVNProvince(row, addressDb, stateList) {
+    function mapProvince(row, addressDb, stateList) {
       const normalized = normalizeText(getFullAddressText(row));
 
-      const aliasProvince = inferVNProvinceByAlias(normalized);
+      const aliasProvince = inferProvinceByAlias(normalized);
       if (aliasProvince) return aliasProvince;
 
       const sortedStates = [...stateList].sort((a, b) => b.stateCore.length - a.stateCore.length);
-
       for (const state of sortedStates) {
         if (state.stateCore && state.stateCore.length >= 3 && normalized.includes(state.stateCore)) {
           return state.state;
@@ -550,9 +529,8 @@
       return "NEED CHECK";
     }
 
-    function mapVNWard(row, province, addressDb) {
+    function mapWard(row, province, addressDb) {
       const normalized = normalizeText(getFullAddressText(row));
-
       let candidates = addressDb;
 
       if (province && province !== "NEED CHECK") {
@@ -571,12 +549,36 @@
       const uniqueWards = [...new Set(topMatches.map(match => match.item.ward))];
 
       if (uniqueWards.length === 1) return topMatches[0].item.ward;
-
       return "NEED CHECK";
     }
 
-    function buildVNRows(shopifyRows, addressDb, stateList) {
-      const orders = groupShopifyOrders(shopifyRows);
+    function buildVietnamRows(shopifyRows, addressDb, stateList) {
+      const orders = {};
+      let lastOrderId = "";
+      const hasRealId = shopifyRows.some(row => getRealShopifyId(row));
+
+      shopifyRows.forEach(row => {
+        let orderNo = "";
+
+        if (hasRealId) {
+          const realId = getRealShopifyId(row);
+          if (realId) lastOrderId = realId;
+          orderNo = realId || lastOrderId;
+        } else {
+          orderNo = getValue(row, "Name");
+        }
+
+        if (!orderNo) return;
+
+        if (!orders[orderNo]) orders[orderNo] = { base: row, items: [] };
+
+        const qty = cleanNumber(getValue(row, "Lineitem quantity")) || 1;
+        const price = cleanNumber(getValue(row, "Lineitem price"));
+        const itemName = getValue(row, "Lineitem name") || getValue(row, "Lineitem sku") || "Skechers product";
+
+        orders[orderNo].items.push({ name: itemName, qty, price });
+      });
+
       const outputRows = [];
       const warnings = [];
 
@@ -590,14 +592,9 @@
         const productName = shortProductName(items, totalQty);
 
         const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
-        const phone = cleanPhone(
-          getValue(base, "Shipping Phone") ||
-          getValue(base, "Billing Phone") ||
-          getValue(base, "Phone")
-        );
-
-        const province = mapVNProvince(base, addressDb, stateList);
-        const ward = mapVNWard(base, province, addressDb);
+        const phone = cleanPhone(getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone"));
+        const province = mapProvince(base, addressDb, stateList);
+        const ward = mapWard(base, province, addressDb);
         const address = buildAddress(base);
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
 
@@ -643,211 +640,260 @@
       return { outputRows, warnings };
     }
 
-    function extractTHAddressDatabase(workbook) {
-      const stateSheet = workbook.Sheets["State_list"];
-      const citySheet = workbook.Sheets["City_list"];
-      const postalSheet = workbook.Sheets["Postal_Code_list"];
-
-      if (!stateSheet || !citySheet || !postalSheet) {
-        throw new Error("TH template missing State_list / City_list / Postal_Code_list.");
+    function cleanThaiPhone(phone) {
+      let digits = cleanDigits(phone);
+      if (digits.startsWith("0066") && digits.length > 9) {
+        const local = digits.slice(4);
+        digits = local.startsWith("0") ? local : "0" + local;
       }
-
-      const stateRows = XLSX.utils.sheet_to_json(stateSheet, { header: 1, defval: "" });
-      const cityRows = XLSX.utils.sheet_to_json(citySheet, { header: 1, defval: "" });
-      const postalRows = XLSX.utils.sheet_to_json(postalSheet, { header: 1, defval: "" });
-
-      const districtToProvince = {};
-      cityRows.slice(1).forEach(row => {
-        const district = cleanOutputText(row[0]);
-        const province = cleanOutputText(row[1]);
-        if (district && province) districtToProvince[district] = province;
-      });
-
-      const postalMap = {};
-      postalRows.slice(1).forEach(row => {
-        const district = cleanOutputText(row[0]);
-        const province = cleanOutputText(row[1]);
-        const postal = cleanZip(row[2]);
-        if (!district || !province || !postal) return;
-        postalMap[district + "|" + province] = postal;
-      });
-
-      const addressDb = [];
-
-      stateRows.slice(1).forEach(row => {
-        const subDistrict = cleanOutputText(row[0]);
-        const district = cleanOutputText(row[1]);
-        const province = districtToProvince[district] || "";
-        const postal = postalMap[district + "|" + province] || "";
-
-        if (!subDistrict || !district || !province) return;
-
-        addressDb.push({
-          subDistrict,
-          district,
-          province,
-          postal,
-          subCore: removeAdminPrefix(subDistrict),
-          districtCore: removeAdminPrefix(district),
-          provinceCore: removeAdminPrefix(province)
-        });
-      });
-
-      return addressDb;
+      if (digits.startsWith("66") && digits.length >= 11) {
+        const local = digits.slice(2);
+        digits = local.startsWith("0") ? local : "0" + local;
+      }
+      return digits;
     }
 
-    function inferTHProvince(row, normalizedText) {
-      const provinceCode = getValue(row, "Shipping Province");
-      const provinceName = getValue(row, "Shipping Province Name");
+    function mapThaiProvince(row) {
+      let code = getValue(row, "Shipping Province").toUpperCase().replace(/_/g, "-");
+      if (/^\d{2}$/.test(code)) code = "TH-" + code;
+      if (thProvinceData[code]) return thProvinceData[code][1];
 
-      if (thProvinceAliases[provinceCode]) return thProvinceAliases[provinceCode];
-
-      const provinceNameNorm = normalizeText(provinceName);
-      if (thProvinceAliases[provinceNameNorm]) return thProvinceAliases[provinceNameNorm];
-
-      for (const key in thProvinceAliases) {
-        if (normalizedText.includes(normalizeText(key))) {
-          return thProvinceAliases[key];
-        }
+      const provinceName = getValue(row, "Shipping Province Name") || getValue(row, "Shipping Province");
+      if (/[\u0E00-\u0E7F]/.test(provinceName)) {
+        return cleanOutputText(provinceName).replace(/^จังหวัด\s*/u, "");
       }
 
-      return "";
+      return thProvinceByEnglish[normalizeLatinKey(provinceName)] || "NEED CHECK";
     }
 
-    function scoreTHCandidate(normalizedText, entry) {
-      let score = 0;
+    function mapThaiCity(row) {
+      const rawCity = getValue(row, "Shipping City") || getValue(row, "Billing City");
+      if (!rawCity) return "NEED CHECK";
 
-      if (entry.subCore && normalizedText.includes(entry.subCore)) score += 1000 + entry.subCore.length;
-      if (entry.districtCore && normalizedText.includes(entry.districtCore)) score += 400 + entry.districtCore.length;
-      if (entry.provinceCore && normalizedText.includes(entry.provinceCore)) score += 200 + entry.provinceCore.length;
-
-      return score;
-    }
-
-    function findTHManualAlias(normalizedText) {
-      const result = {};
-
-      thManualAddressAliases.forEach(alias => {
-        alias.keywords.forEach(keyword => {
-          if (normalizedText.includes(normalizeText(keyword))) {
-            if (alias.subDistrict) result.subDistrict = alias.subDistrict;
-            if (alias.district) result.district = alias.district;
-            if (alias.province) result.province = alias.province;
-          }
-        });
-      });
-
-      return result;
-    }
-
-    function mapTHAddress(row, addressDb) {
-      const normalized = normalizeText(getFullAddressText(row));
-      const manual = findTHManualAlias(normalized);
-
-      let province = manual.province || inferTHProvince(row, normalized);
-      let candidates = addressDb;
-
-      if (province) {
-        candidates = candidates.filter(item => item.province === province);
+      if (/[\u0E00-\u0E7F]/.test(rawCity)) {
+        return cleanOutputText(rawCity)
+          .replace(/^(อำเภอ|เขต)\s*/u, "")
+          .trim();
       }
 
-      const matched = candidates
-        .map(item => ({ item, score: scoreTHCandidate(normalized, item) }))
-        .filter(match => match.score > 0)
-        .sort((a, b) => b.score - a.score);
-
-      let best = matched.length ? matched[0].item : null;
-
-      if (manual.subDistrict) {
-        const manualMatch = addressDb.find(item =>
-          item.subDistrict === manual.subDistrict &&
-          (!manual.district || item.district === manual.district) &&
-          (!manual.province || item.province === manual.province)
-        );
-
-        if (manualMatch) best = manualMatch;
-      }
-
-      if (!best && manual.district && manual.province) {
-        best = addressDb.find(item =>
-          item.district === manual.district &&
-          item.province === manual.province
-        );
-      }
-
-      const subDistrict = best ? best.subDistrict : "NEED CHECK";
-      const district = best ? best.district : (manual.district || "NEED CHECK");
-      province = best ? best.province : (province || "NEED CHECK");
-
-      let postal = cleanZip(getValue(row, "Shipping Zip"));
-      if (!postal && best && best.postal) postal = best.postal;
-
-      return {
-        subDistrict,
-        district,
-        province,
-        postal
-      };
+      const key = normalizeLatinKey(rawCity)
+        .replace(/^(amphoe|district)\s+/, "")
+        .trim();
+      return thCityAliases[key] || cleanOutputText(rawCity);
     }
 
-    function buildTHRows(shopifyRows, addressDb) {
+    function extractThaiSubdistrict(row, city) {
+      const addressText = cleanOutputText([
+        getValue(row, "Shipping Address1"),
+        getValue(row, "Shipping Address2"),
+        getValue(row, "Shipping Street")
+      ].filter(Boolean).join(", "));
+
+      const thaiMatch = addressText.match(
+        /(?:^|[\s,])(?:ต\.|ตำบล|แขวง)\s*([^,]+?)(?=\s+(?:อ\.|อำเภอ|เขต|จ\.|จังหวัด)|,|$)/u
+      );
+
+      if (thaiMatch) {
+        const subdistrict = cleanOutputText(thaiMatch[1])
+          .replace(/^(ตำบล|แขวง)\s*/u, "")
+          .trim();
+        if (subdistrict) return { value: subdistrict, inferred: false };
+      }
+
+      const normalizedAddress = normalizeLatinKey(addressText);
+      for (const [alias, mapped] of Object.entries(thSubdistrictAliases)) {
+        if (normalizedAddress.includes(alias)) return { value: mapped, inferred: false };
+      }
+
+      return { value: city, inferred: true };
+    }
+
+    function buildThailandRows(shopifyRows) {
       const orders = groupShopifyOrders(shopifyRows);
       const outputRows = [];
       const warnings = [];
 
-      Object.keys(orders).forEach(orderNo => {
-        const order = orders[orderNo];
-        const base = order.base;
-        const items = order.items;
-
+      orders.forEach(order => {
+        const { orderNo, base, items } = order;
         const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
         const totalProductPrice = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
         const productName = shortProductName(items, totalQty);
 
         const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
-        const phone = cleanTHPhone(
-          getValue(base, "Shipping Phone") ||
-          getValue(base, "Billing Phone") ||
-          getValue(base, "Phone")
+        const phone = cleanThaiPhone(
+          getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone")
         );
-
-        const mapped = mapTHAddress(base, addressDb);
-        const address = buildAddress(base);
+        const detailAddress = buildAddress(base);
+        const city = mapThaiCity(base);
+        const province = mapThaiProvince(base);
+        const { value: subdistrict, inferred: subdistrictInferred } = extractThaiSubdistrict(base, city);
+        const postalCode = cleanPostalCode(getValue(base, "Shipping Zip") || getValue(base, "Billing Zip"));
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
+        const deliveryInstruction = getValue(base, "Notes");
 
         if (!receiverName) warnings.push(`${orderNo}: missing receiver name`);
         if (!phone) warnings.push(`${orderNo}: missing phone`);
-        if (!address) warnings.push(`${orderNo}: missing address`);
-        if (mapped.subDistrict === "NEED CHECK") warnings.push(`${orderNo}: sub-district needs checking`);
-        if (mapped.district === "NEED CHECK") warnings.push(`${orderNo}: city/district needs checking`);
-        if (mapped.province === "NEED CHECK") warnings.push(`${orderNo}: province needs checking`);
-        if (!mapped.postal) warnings.push(`${orderNo}: postal code missing`);
+        else if (!/^\d{9,10}$/.test(phone)) warnings.push(`${orderNo}: phone format needs checking`);
+        if (!detailAddress) warnings.push(`${orderNo}: missing detail address`);
+        if (!subdistrict || subdistrict === "NEED CHECK") warnings.push(`${orderNo}: sub-district needs checking`);
+        else if (subdistrictInferred) warnings.push(`${orderNo}: sub-district inferred from city; please verify`);
+        if (!city || city === "NEED CHECK") warnings.push(`${orderNo}: city needs checking`);
+        else if (!/[\u0E00-\u0E7F]/.test(city)) warnings.push(`${orderNo}: city is not in Thai; please verify`);
+        if (!province || province === "NEED CHECK") warnings.push(`${orderNo}: province needs checking`);
+        if (!/^\d{5}$/.test(postalCode)) warnings.push(`${orderNo}: postal code needs checking`);
+        if (orderValue <= 0) warnings.push(`${orderNo}: parcel value needs checking`);
 
         outputRows.push([
           receiverName,
           phone,
-          address,
-          mapped.subDistrict,
-          mapped.district,
-          mapped.province,
-          mapped.postal,
+          detailAddress,
+          subdistrict,
+          city,
+          province,
+          postalCode,
           2,
           14,
           28,
           36,
           productName,
           totalQty,
-          orderNo,
+          cleanOutputText(orderNo).replace(/^#/, ""),
           "ชำระโดยผู้ส่ง",
           "N",
           "",
           "N",
           orderValue,
-          ""
+          deliveryInstruction
         ]);
       });
 
       return { outputRows, warnings };
+    }
+
+    function splitSingaporeAddress(row) {
+      const rawParts = [
+        getValue(row, "Shipping Address1"),
+        getValue(row, "Shipping Address2"),
+        getValue(row, "Shipping Company")
+      ].filter(Boolean);
+
+      const city = getValue(row, "Shipping City");
+      if (
+        city &&
+        normalizeLatinKey(city) !== "singapore" &&
+        !rawParts.some(part => normalizeLatinKey(part).includes(normalizeLatinKey(city)))
+      ) {
+        rawParts.push(city);
+      }
+
+      let unitNo = "";
+      const unitPattern = /(?:#|unit\s*)\s*(\d{1,3}[a-z]?)\s*[-/]\s*(\d{1,5}[a-z]?)/i;
+      const streetParts = rawParts.map(part => {
+        if (unitNo) return part;
+        const match = part.match(unitPattern);
+        if (!match) return part;
+
+        unitNo = `#${match[1].toUpperCase()}-${match[2].toUpperCase()}`;
+        return cleanOutputText(
+          part
+            .replace(match[0], "")
+            .replace(/^[,\s]+|[,\s]+$/g, "")
+        );
+      }).filter(Boolean);
+
+      return {
+        street: cleanOutputText(streetParts.join(", ")),
+        unitNo
+      };
+    }
+
+    function buildSingaporeRows(shopifyRows) {
+      const orders = groupShopifyOrders(shopifyRows);
+      const outputRows = [];
+      const warnings = [];
+
+      orders.forEach(order => {
+        const { orderNo, base, items } = order;
+        const totalQty = items.reduce((sum, item) => sum + item.qty, 0);
+        const totalProductPrice = items.reduce((sum, item) => sum + (item.qty * item.price), 0);
+        const productName = shortProductName(items, totalQty);
+
+        const receiverName = getValue(base, "Shipping Name") || getValue(base, "Billing Name");
+        const phone = cleanSingaporePhone(
+          getValue(base, "Shipping Phone") || getValue(base, "Billing Phone") || getValue(base, "Phone")
+        );
+        const postalCode = cleanSingaporePostalCode(
+          getValue(base, "Shipping Zip") || getValue(base, "Billing Zip")
+        );
+        const { street, unitNo } = splitSingaporeAddress(base);
+        const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
+        const deliveryInstruction = getValue(base, "Notes");
+        const reference = cleanOutputText(orderNo).replace(/^#/, "");
+
+        if (!receiverName) warnings.push(`${orderNo}: missing receiver name`);
+        if (!phone) warnings.push(`${orderNo}: missing phone`);
+        else if (!/^\d{8}$/.test(phone)) warnings.push(`${orderNo}: Singapore phone must contain 8 digits`);
+        if (!postalCode) warnings.push(`${orderNo}: missing postal code`);
+        else if (!/^\d{6}$/.test(postalCode)) warnings.push(`${orderNo}: Singapore postal code must contain 6 digits`);
+        if (!street) warnings.push(`${orderNo}: missing street name/building`);
+        if (!reference) warnings.push(`${orderNo}: missing customer reference number`);
+        if (orderValue <= 0) warnings.push(`${orderNo}: parcel value needs checking`);
+
+        outputRows.push([
+          receiverName,
+          phone,
+          postalCode,
+          street,
+          unitNo,
+          2,
+          14,
+          28,
+          36,
+          productName,
+          totalQty,
+          reference,
+          orderValue,
+          deliveryInstruction
+        ]);
+      });
+
+      return { outputRows, warnings };
+    }
+
+    function writeMappedWorkbook(headers, outputRows, sheetName, fileName, columnWidths, textColumnIndexes) {
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.aoa_to_sheet([headers, ...outputRows]);
+
+      worksheet["!cols"] = columnWidths.map(width => ({ wch: width }));
+      worksheet["!rows"] = [{ hpt: 30 }];
+
+      for (let rowIndex = 1; rowIndex <= outputRows.length; rowIndex += 1) {
+        textColumnIndexes.forEach(columnIndex => {
+          const cellAddress = XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex });
+          const cell = worksheet[cellAddress];
+          if (!cell || cell.v === null || cell.v === undefined || cell.v === "") return;
+          cell.v = String(cell.v);
+          cell.t = "s";
+          cell.z = "@";
+          cell.w = cell.v;
+        });
+      }
+
+      XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+      XLSX.writeFile(workbook, fileName);
+    }
+
+    function updateCountryNote() {
+      const country = document.getElementById("country").value;
+      document.getElementById("countryNote").innerHTML = countryNotes[country].join("<br>");
+    }
+
+    function normalizeCountryCode(value) {
+      const normalized = cleanOutputText(value).toUpperCase();
+      if (normalized === "VIETNAM") return "VN";
+      if (normalized === "THAILAND") return "TH";
+      if (normalized === "SINGAPORE") return "SG";
+      return normalized;
     }
 
     async function generateTemplate() {
@@ -868,69 +914,98 @@
         }
 
         const shopifyRows = await parseCsvFile(csvInput.files[0], encoding);
+        const reportCountries = [...new Set(
+          shopifyRows
+            .map(row => normalizeCountryCode(getValue(row, "Shipping Country")))
+            .filter(Boolean)
+        )];
 
-        let workbook;
-        let worksheet;
-        let fileName;
-        let outputRows;
-        let warnings;
+        if (reportCountries.length > 0 && !reportCountries.includes(country)) {
+          resultBox.className = "result error";
+          resultBox.innerText =
+            `Country mismatch: you selected ${country}, but the Shopify report contains ${reportCountries.join(", ")} orders.`;
+          return;
+        }
+
+        let outputRows = [];
+        let warnings = [];
+        let headers = [];
+        let sheetName = "";
+        let fileName = "";
+        let columnWidths = [];
+        let textColumnIndexes = [];
 
         if (country === "VN") {
-          const spxWorkbook = await fetchWorkbook(VN_TEMPLATE_FILE);
-          const { addressDb, stateList } = extractVNAddressDatabase(spxWorkbook);
-          const result = buildVNRows(shopifyRows, addressDb, stateList);
+          if (!window.VN_ADDRESS_DB || !window.VN_STATE_LIST) {
+            resultBox.className = "result error";
+            resultBox.innerText = "VN address database is missing. Please add vn-address-db.js into the same GitHub repository.";
+            return;
+          }
 
-          outputRows = result.outputRows;
-          warnings = result.warnings;
-          workbook = XLSX.utils.book_new();
-          worksheet = XLSX.utils.aoa_to_sheet([vnHeaders, ...outputRows]);
-          XLSX.utils.book_append_sheet(workbook, worksheet, "Tạo đơn (địa chỉ mới)");
+          const { addressDb, stateList } = prepareAddressDb();
+          ({ outputRows, warnings } = buildVietnamRows(shopifyRows, addressDb, stateList));
+          headers = vnHeaders;
+          sheetName = "Tạo đơn (địa chỉ mới)";
           fileName = "SPX_Vietnam_Mapped_Template.xlsx";
-        }
-
-        if (country === "TH") {
-          const spxWorkbook = await fetchWorkbook(TH_TEMPLATE_FILE);
-          const addressDb = extractTHAddressDatabase(spxWorkbook);
-          const result = buildTHRows(shopifyRows, addressDb);
-
-          outputRows = result.outputRows;
-          warnings = result.warnings;
-          workbook = XLSX.utils.book_new();
-          worksheet = XLSX.utils.aoa_to_sheet([thHeaders, ...outputRows]);
-          XLSX.utils.book_append_sheet(workbook, worksheet, "Mass Order Creation-TH");
+          columnWidths = [
+            20, 24, 16, 26, 26, 60, 20, 12, 60, 12,
+            14, 14, 12, 12, 12, 20, 16, 14, 14, 18,
+            18, 18, 12, 14, 18, 18, 24, 28, 32
+          ];
+          textColumnIndexes = [0, 2, 7, 15];
+        } else if (country === "TH") {
+          ({ outputRows, warnings } = buildThailandRows(shopifyRows));
+          headers = thHeaders;
+          sheetName = "Mass Order Creation-TH";
           fileName = "SPX_Thailand_Mapped_Template.xlsx";
+          columnWidths = [
+            26, 22, 60, 24, 24, 24, 16, 18, 18, 18,
+            18, 60, 16, 28, 22, 24, 20, 24, 20, 42
+          ];
+          textColumnIndexes = [1, 6, 13];
+        } else if (country === "SG") {
+          ({ outputRows, warnings } = buildSingaporeRows(shopifyRows));
+          headers = sgHeaders;
+          sheetName = "Mass Order Creation - SG";
+          fileName = "SPX_Singapore_Mapped_Template.xlsx";
+          columnWidths = [
+            18, 16, 14, 42, 16, 18, 18,
+            18, 18, 50, 14, 28, 18, 42
+          ];
+          textColumnIndexes = [1, 2, 11];
         }
 
-        if (!outputRows || outputRows.length === 0) {
+        if (outputRows.length === 0) {
           resultBox.className = "result error";
           resultBox.innerText = "No valid orders found. Please check whether this is the correct Shopify order report CSV.";
           return;
         }
 
-        worksheet["!cols"] = [
-          { wch: 24 }, { wch: 18 }, { wch: 60 }, { wch: 24 }, { wch: 24 },
-          { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
-          { wch: 12 }, { wch: 60 }, { wch: 12 }, { wch: 22 }, { wch: 18 },
-          { wch: 14 }, { wch: 18 }, { wch: 14 }, { wch: 18 }, { wch: 28 }
-        ];
+        writeMappedWorkbook(
+          headers,
+          outputRows,
+          sheetName,
+          fileName,
+          columnWidths,
+          textColumnIndexes
+        );
 
-        XLSX.writeFile(workbook, fileName);
-
-        let message = `Generated successfully.\nCountry: ${country}\nTotal orders: ${outputRows.length}\nDownloaded file: ${fileName}`;
-
+        let message = `Generated successfully.\nTotal orders: ${outputRows.length}\nDownloaded file: ${fileName}`;
         if (warnings.length > 0) {
           message += `\n\nNeed checking:\n- ${warnings.join("\n- ")}`;
         } else {
-          message += "\n\nNo missing address mapping detected. Please still test upload in SPX before live operation.";
+          message += "\n\nNo mapping warnings detected. Please still test upload in SPX before live operation.";
         }
 
         resultBox.innerText = message;
-
       } catch (error) {
         resultBox.className = "result error";
         resultBox.innerText = "Generation failed: " + error.message;
       }
     }
+
+    document.getElementById("country").addEventListener("change", updateCountryNote);
+    updateCountryNote();
   </script>
 </body>
 </html>
