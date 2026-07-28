@@ -2,6 +2,9 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Shipping Label Generator</title>
 
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
@@ -24,6 +27,17 @@
     }
 
     h1 { margin-top: 0; }
+
+    .version {
+      display: inline-block;
+      margin-top: 2px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #e8f5ed;
+      color: #17633d;
+      font-size: 12px;
+      font-weight: bold;
+    }
 
     label {
       font-weight: bold;
@@ -81,6 +95,7 @@
   <div class="box">
     <h1>Shipping Label Generator</h1>
     <p>Convert Shopify order report into courier bulk upload template.</p>
+    <div class="version">System version: 2026-07-28.2</div>
 
     <label>Select Country</label>
     <select id="country">
@@ -111,6 +126,7 @@
   </div>
 
   <script>
+    const APP_VERSION = "2026-07-28.2";
     const VN_TEMPLATE_FILE = "./spx-vn-template.xlsx";
     const TH_TEMPLATE_FILE = "./spx-th-template.xlsx";
     const SG_TEMPLATE_FILE = "./spx-sg-template.xlsx";
@@ -255,6 +271,24 @@
     };
 
     const thManualAddressAliases = [
+      {
+        keywords: [
+          "phongprasat",
+          "phong prasat",
+          "pongprasat",
+          "pong prasat",
+          "phongprasan",
+          "pongprasan"
+        ],
+        subDistrict: "พงศ์ประศาสน์",
+        district: "บางสะพาน",
+        province: "ประจวบคีรีขันธ์"
+      },
+      {
+        keywords: ["bang saphan"],
+        district: "บางสะพาน",
+        province: "ประจวบคีรีขันธ์"
+      },
       {
         keywords: ["tungyao", "tung yao", "thung yao"],
         subDistrict: "ทุ่งยาว",
@@ -530,7 +564,18 @@
 
     function inferVNProvinceByAlias(normalizedText) {
       const aliases = [
-        { keys: ["hcm", "tp hcm", "tphcm", "ho chi minh"], province: "Thành phố Hồ Chí Minh" },
+        {
+          keys: [
+            "hcm",
+            "tp hcm",
+            "tphcm",
+            "ho chi minh",
+            "binh duong",
+            "ben cat",
+            "kcn my phuoc"
+          ],
+          province: "Thành phố Hồ Chí Minh"
+        },
         { keys: ["ha noi", "hanoi"], province: "Thành phố Hà Nội" },
         { keys: ["da nang"], province: "Thành phố Đà Nẵng" },
         { keys: ["can tho"], province: "Thành phố Cần Thơ" },
@@ -543,6 +588,45 @@
         for (const key of alias.keys) {
           if (normalizedText.includes(normalizeText(key))) return alias.province;
         }
+      }
+
+      return "";
+    }
+
+    function inferVNProvinceFromExactWard(normalizedText, addressDb) {
+      const exactMatches = addressDb.filter(item =>
+        item.wardNorm &&
+        item.wardNorm.length >= 4 &&
+        normalizedText.includes(item.wardNorm)
+      );
+
+      const provinces = [...new Set(exactMatches.map(item => item.province))];
+      return provinces.length === 1 ? provinces[0] : "";
+    }
+
+    function inferVNLegacyWard(normalizedText, province, addressDb) {
+      const aliases = [
+        {
+          keys: ["phuong my phuoc", "my phuoc ward", "kcn my phuoc"],
+          province: "Thành phố Hồ Chí Minh",
+          ward: "Phường Bến Cát"
+        }
+      ];
+
+      for (const alias of aliases) {
+        if (province && province !== "NEED CHECK" && province !== alias.province) continue;
+
+        const matched = alias.keys.some(key =>
+          normalizedText.includes(normalizeText(key))
+        );
+        if (!matched) continue;
+
+        const existsInOfficialDatabase = addressDb.some(item =>
+          item.province === alias.province &&
+          item.ward === alias.ward
+        );
+
+        if (existsInOfficialDatabase) return alias.ward;
       }
 
       return "";
@@ -562,17 +646,31 @@
         }
       }
 
+      const exactWardProvince = inferVNProvinceFromExactWard(normalized, addressDb);
+      if (exactWardProvince) return exactWardProvince;
+
       return "NEED CHECK";
     }
 
     function mapVNWard(row, province, addressDb) {
       const normalized = normalizeText(getFullAddressText(row));
 
+      const legacyWard = inferVNLegacyWard(normalized, province, addressDb);
+      if (legacyWard) return legacyWard;
+
+      if (!province || province === "NEED CHECK") {
+        const exactMatches = addressDb.filter(item =>
+          item.wardNorm &&
+          item.wardNorm.length >= 4 &&
+          normalized.includes(item.wardNorm)
+        );
+        const uniqueWards = [...new Set(exactMatches.map(item => item.ward))];
+        return uniqueWards.length === 1 ? uniqueWards[0] : "NEED CHECK";
+      }
+
       let candidates = addressDb;
 
-      if (province && province !== "NEED CHECK") {
-        candidates = candidates.filter(item => item.province === province);
-      }
+      candidates = candidates.filter(item => item.province === province);
 
       const matched = candidates
         .map(item => ({ item, score: scoreWardCandidate(normalized, item) }))
@@ -684,7 +782,9 @@
         const province = cleanOutputText(row[1]);
         const postal = cleanZip(row[2]);
         if (!district || !province || !postal) return;
-        postalMap[district + "|" + province] = postal;
+        const key = district + "|" + province;
+        if (!postalMap[key]) postalMap[key] = [];
+        if (!postalMap[key].includes(postal)) postalMap[key].push(postal);
       });
 
       const addressDb = [];
@@ -693,7 +793,8 @@
         const subDistrict = cleanOutputText(row[0]);
         const district = cleanOutputText(row[1]);
         const province = districtToProvince[district] || "";
-        const postal = postalMap[district + "|" + province] || "";
+        const postals = postalMap[district + "|" + province] || [];
+        const postal = postals.length === 1 ? postals[0] : "";
 
         if (!subDistrict || !district || !province) return;
 
@@ -702,6 +803,7 @@
           district,
           province,
           postal,
+          postals,
           subCore: removeAdminPrefix(subDistrict),
           districtCore: removeAdminPrefix(district),
           provinceCore: removeAdminPrefix(province)
@@ -758,17 +860,29 @@
     function mapTHAddress(row, addressDb) {
       const normalized = normalizeText(getFullAddressText(row));
       const manual = findTHManualAlias(normalized);
+      const inputPostal = cleanZip(
+        getValue(row, "Shipping Zip") ||
+        getValue(row, "Billing Zip")
+      );
 
       let province = manual.province || inferTHProvince(row, normalized);
       let candidates = addressDb;
 
       if (province) {
-        candidates = candidates.filter(item => item.province === province);
+        const provinceCandidates = candidates.filter(item => item.province === province);
+        if (provinceCandidates.length) candidates = provinceCandidates;
+      }
+
+      if (inputPostal) {
+        const postalCandidates = candidates.filter(item =>
+          (item.postals || [item.postal]).includes(inputPostal)
+        );
+        if (postalCandidates.length) candidates = postalCandidates;
       }
 
       const matched = candidates
         .map(item => ({ item, score: scoreTHCandidate(normalized, item) }))
-        .filter(match => match.score > 0)
+        .filter(match => match.score >= 400)
         .sort((a, b) => b.score - a.score);
 
       let best = matched.length ? matched[0].item : null;
@@ -783,19 +897,30 @@
         if (manualMatch) best = manualMatch;
       }
 
-      if (!best && manual.district && manual.province) {
-        best = addressDb.find(item =>
-          item.district === manual.district &&
-          item.province === manual.province
-        );
+      if (!best && candidates.length === 1) best = candidates[0];
+
+      const uniqueDistricts = [...new Set(candidates.map(item => item.district))];
+      const uniqueProvinces = [...new Set(candidates.map(item => item.province))];
+      const uniquePostals = [...new Set(
+        candidates.flatMap(item => item.postals || [item.postal]).filter(Boolean)
+      )];
+
+      const subDistrict = best
+        ? best.subDistrict
+        : (manual.subDistrict || "NEED CHECK");
+      const district = best
+        ? best.district
+        : (manual.district || (uniqueDistricts.length === 1 ? uniqueDistricts[0] : "NEED CHECK"));
+      province = best
+        ? best.province
+        : (manual.province || province || (uniqueProvinces.length === 1 ? uniqueProvinces[0] : "NEED CHECK"));
+
+      let postal = inputPostal;
+      if (!postal && best && best.postal) {
+        postal = best.postal;
+      } else if (!postal && uniquePostals.length === 1) {
+        postal = uniquePostals[0];
       }
-
-      const subDistrict = best ? best.subDistrict : "NEED CHECK";
-      const district = best ? best.district : (manual.district || "NEED CHECK");
-      province = best ? best.province : (province || "NEED CHECK");
-
-      let postal = cleanZip(getValue(row, "Shipping Zip"));
-      if (!postal && best && best.postal) postal = best.postal;
 
       return {
         subDistrict,
@@ -865,6 +990,74 @@
       return { outputRows, warnings };
     }
 
+    function splitSGAddress(row) {
+      const address1 =
+        getValue(row, "Shipping Address1") ||
+        getValue(row, "Billing Address1");
+      const address2 =
+        getValue(row, "Shipping Address2") ||
+        getValue(row, "Billing Address2");
+      const company =
+        getValue(row, "Shipping Company") ||
+        getValue(row, "Billing Company");
+      const city =
+        getValue(row, "Shipping City") ||
+        getValue(row, "Billing City");
+
+      const rawParts = [];
+
+      [address1, address2, company].forEach(part => {
+        if (!part) return;
+        const normalizedPart = normalizeText(part);
+        const isDuplicate = rawParts.some(existing =>
+          normalizeText(existing) === normalizedPart
+        );
+        if (!isDuplicate) rawParts.push(part);
+      });
+
+      if (
+        city &&
+        normalizeText(city) !== "singapore" &&
+        !rawParts.some(part => normalizeText(part).includes(normalizeText(city)))
+      ) {
+        rawParts.push(city);
+      }
+
+      let unitNo = "";
+      const unitPatterns = [
+        /(?:#|unit\s*)\s*(\d{1,3}[a-z]?)\s*[-/]\s*(\d{1,5}[a-z]?)/i,
+        /(?:^|[\s,])(\d{1,3}[a-z]?)\s*[-/]\s*(\d{1,5}[a-z]?)(?=$|[\s,])/i
+      ];
+
+      const streetParts = rawParts.map(part => {
+        if (unitNo) return part;
+
+        let match = null;
+        for (const pattern of unitPatterns) {
+          match = part.match(pattern);
+          if (match) break;
+        }
+
+        if (!match) return part;
+
+        unitNo = `#${match[1].toUpperCase()}-${match[2].toUpperCase()}`;
+
+        const remaining = [
+          part.slice(0, match.index),
+          part.slice(match.index + match[0].length)
+        ].join(" ");
+
+        return cleanOutputText(
+          remaining.replace(/^[,\s]+|[,\s]+$/g, "")
+        );
+      }).filter(Boolean);
+
+      return {
+        streetBuilding: cleanOutputText(streetParts.join(", ")),
+        unitNo
+      };
+    }
+
     function buildSGRows(shopifyRows) {
       const orders = groupShopifyOrders(shopifyRows);
       const outputRows = [];
@@ -895,13 +1088,7 @@
           postalCode = "0" + postalCode;
         }
 
-        const streetBuilding =
-          getValue(base, "Shipping Address1") ||
-          getValue(base, "Billing Address1");
-
-        const unitNo =
-          getValue(base, "Shipping Address2") ||
-          getValue(base, "Billing Address2");
+        const { streetBuilding, unitNo } = splitSGAddress(base);
 
         const orderValue = cleanNumber(getValue(base, "Total")) || totalProductPrice;
         const deliveryInstruction =
@@ -1044,7 +1231,7 @@
 
         XLSX.writeFile(workbook, fileName);
 
-        let message = `Generated successfully.\nCountry: ${country}\nTotal orders: ${outputRows.length}\nDownloaded file: ${fileName}`;
+        let message = `Generated successfully.\nSystem version: ${APP_VERSION}\nCountry: ${country}\nTotal orders: ${outputRows.length}\nDownloaded file: ${fileName}`;
 
         if (warnings.length > 0) {
           message += `\n\nNeed checking:\n- ${warnings.join("\n- ")}`;
